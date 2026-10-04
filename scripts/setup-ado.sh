@@ -15,7 +15,7 @@ az pipelines variable-group create --name ai-agents --authorize true --variables
   FOUNDRY_ENDPOINT="https://<resource>.openai.azure.com/" \
   PRIMARY_DEPLOYMENT="<primary-model>" OPENAI_API_VERSION="2024-10-21" \
   TEST_BASE_URL="https://<test-webapp>.azurewebsites.net" \
-  ORCHESTRATOR_URL="$FUNC_URL" QA_AGENT_PIPELINE_ID="0" TEST_WEBAPP_NAME="<test-webapp>" || true
+  LLM_PROVIDER="azure" ORCHESTRATOR_URL="$FUNC_URL" QA_AGENT_PIPELINE_ID="0" TEST_WEBAPP_NAME="<test-webapp>" || true
 
 cat <<MSG
 
@@ -26,10 +26,13 @@ Manual steps still required (see docs/04-setup-guide.md):
   4. Service hooks (Web Hooks) -> $FUNC_URL
        - Work item created   (tag contains ai-loop)
        - Work item updated   (area path AI-Loop)
-  5. Create pipelines from YAML: pipelines/ci.yml, deploy-test.yml, dev-agent.yml, qa-agent.yml
-     then set DEV_AGENT_PIPELINE_ID (Function app setting) and QA_AGENT_PIPELINE_ID (variable group).
+  5. Copy pipelines/ and a .agent/project.json (see docs/16-project-adapters.md) into the TARGET repo; add this repo as the 'agentkit'
+     repository resource; create pipelines from YAML: ci.yml, deploy-test.yml, dev-agent.yml, qa-agent.yml
+     then set devAgentPipelineId / qaAgentPipelineId (Bicep parameters or Function app settings) and QA_AGENT_PIPELINE_ID (variable group).
+  6. Secrets: for LLM_PROVIDER=anthropic add ANTHROPIC_API_KEY to the variable group as a SECRET variable (never in YAML).
 
 Tags used by the loop:
   ai-loop ai-owner:orchestrator ai-owner:dev ai-owner:qa ai-iter:N ai-needs-info
-  ai-escalated ai-ready-for-signoff ai-raised ai-duplicate
+  ai-escalated ai-ready-for-signoff ai-raised ai-duplicate ai-pr-open
+  ai-started:<epoch> ai-tokens:<n> ai-fail:<iter>:<hash>      (bookkeeping tags written by the orchestrator: wall-clock, token budget, oscillation)
 MSG

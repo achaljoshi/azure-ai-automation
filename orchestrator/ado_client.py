@@ -87,6 +87,25 @@ class AdoClient:
         rels = r.json().get("workItemRelations", [])
         return [x["target"]["id"] for x in rels if x.get("source")]
 
+    def _items_by_wiql(self, query: str, limit: int = 50) -> list[int]:
+        return self.wiql(query)[:limit]
+
+    def list_open_bugs(self, exclude_id: int | None = None) -> list[dict[str, Any]]:
+        """Open bugs in the loop (for duplicate detection): id, title, state, repro."""
+        ids = [i for i in self._items_by_wiql(
+            "SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] = 'Bug' AND [System.State] NOT IN ('Closed','Removed') "
+            "AND [System.Tags] CONTAINS 'ai-loop' ORDER BY [System.ChangedDate] DESC") if i != exclude_id]
+        out = []
+        for i in ids:
+            f = self.get_work_item(i)["fields"]
+            out.append({"id": i, "title": f.get("System.Title", ""), "state": f.get("System.State", ""),
+                        "repro": f.get("Microsoft.VSTS.TCM.ReproSteps", "")[:1500]})
+        return out
+
+    def list_loop_items(self) -> list[int]:
+        return self._items_by_wiql("SELECT [System.Id] FROM WorkItems WHERE [System.Tags] CONTAINS 'ai-loop' "
+                                   "AND [System.State] NOT IN ('Closed','Removed')", limit=200)
+
     # --- pipelines --------------------------------------------------------
     def queue_pipeline(self, pipeline_id: int, params: dict[str, str]) -> int:
         r = requests.post(self._url(f"pipelines/{pipeline_id}/runs?api-version={API}"),

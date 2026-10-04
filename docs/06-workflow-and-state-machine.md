@@ -43,7 +43,7 @@ Using tags keeps the PoC on the stock process. Later you can create custom state
 5. Code coverage on changed lines ≥ 80%.
 6. No new impacted defects: tests in modules touched by the diff all pass (change-impact analysis via changed files → mapped test tags).
 
-## Loop guardrails
+## Loop guardrails (implemented in `orchestrator/engine.py`, tested in `orchestrator/tests/test_engine.py`)
 
 | Guardrail | Default | Why |
 |---|---|---|
@@ -52,7 +52,9 @@ Using tags keeps the PoC on the stock process. Later you can create custom state
 | Token budget per item | e.g. 2M tokens | Cost ceiling; escalate when exceeded |
 | Wall-clock budget per item | 4 hours | Prevents stuck items |
 | Diff budget | 15 files / 600 lines | Large diffs need humans |
-| Oscillation detector | Same test fails → passes → fails across iterations | Escalate immediately |
+| Oscillation detector | Same test fails → passes → fails across iterations | Escalate immediately (hash of the failing set kept in `ai-fail:<iter>:<hash>` tags) |
+
+Bookkeeping tags written by the orchestrator: `ai-started:<epoch>` (wall clock), `ai-tokens:<n>` (running total), `ai-fail:<iter>:<hash>`. A timer-triggered function sweeps every 15 minutes and escalates items that exceeded the wall-clock budget without any event.
 
 ## Example: a bug through the loop
 

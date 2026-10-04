@@ -7,6 +7,8 @@ resources:
     trigger: { branches: { include: [ main ] } }
 
 pool: { vmImage: ubuntu-latest }
+variables:
+- group: ai-agents            # ORCHESTRATOR_URL, QA_AGENT_PIPELINE_ID, TEST_WEBAPP_NAME
 
 stages:
 - stage: deploy_test
@@ -35,6 +37,8 @@ stages:
                   --route-parameters project=$(System.TeamProject) buildId=$(resources.pipeline.ci.runID) \
                   --org $(System.CollectionUri) --query "value[].id" -o tsv)
                 for ID in $ITEMS; do
+                  curl -fsS -X POST "$(ORCHESTRATOR_URL)" -H "Content-Type: application/json" \
+                    -d "{\"eventType\":\"ai.qa.started\",\"workItemId\":$ID}" || true      # tags the item ai-owner:qa, state Resolved
                   az pipelines run --id $(QA_AGENT_PIPELINE_ID) --parameters workItemId=$ID \
                     --org $(System.CollectionUri) --project $(System.TeamProject)
                 done

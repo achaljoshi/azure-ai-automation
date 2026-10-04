@@ -35,7 +35,7 @@ Responsibilities:
 | Runs in | `pipelines/dev-agent.yml` job (real workspace: clone, build, test) |
 | Model | Primary coding model |
 | Inputs | Parent item + child bugs (title, description, repro, AC, last comments), repo, failing test reports from QA |
-| Tools | Shell (sandboxed to the job), file edit, build/test commands, ADO MCP `repos`, `wit` |
+| Tools | `read_file`, `list_dir`, `write_file`, `edit_file`, `run` (allow-listed, no shell) — see `agents/tools.py`; ADO MCP `repos`, `wit` |
 | Writes | Branch `ai/<workItemId>-<slug>`, commits, PR linked to work items, work item comment summarising the change |
 | Never | Pushes to `main`, edits pipeline YAML or branch policies, touches secrets, disables tests |
 

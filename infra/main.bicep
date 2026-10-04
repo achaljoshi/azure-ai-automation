@@ -3,6 +3,24 @@
 param prefix string = 'aisdlc'
 param location string = resourceGroup().location
 
+@description('Azure DevOps organisation URL, e.g. https://dev.azure.com/contoso')
+param adoOrgUrl string = ''
+param adoProject string = ''
+@description('Azure OpenAI / Foundry endpoint used by the triage model (and the agents, when LLM_PROVIDER=azure)')
+param foundryEndpoint string = ''
+param triageDeployment string = ''
+param primaryDeployment string = ''
+@description('Pipeline id of dev-agent.yml (set after you create the pipeline)')
+param devAgentPipelineId int = 0
+param qaAgentPipelineId int = 0
+@description('Who gets assigned when the loop escalates (user principal name)')
+param humanOwner string = ''
+@description('azure | anthropic')
+param llmProvider string = 'azure'
+param iterationCap int = 3
+param tokenBudget int = 2000000
+param wallclockBudgetSeconds int = 14400
+
 var suffix = uniqueString(resourceGroup().id)
 
 resource law 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
@@ -67,7 +85,19 @@ resource func 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'AzureWebJobsStorage', value: 'DefaultEndpointsProtocol=https;AccountName=${st.name};AccountKey=${st.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}' }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
         { name: 'AZURE_CLIENT_ID', value: orchestratorId.properties.clientId }
-        { name: 'ITERATION_CAP', value: '3' }
+        { name: 'ITERATION_CAP', value: string(iterationCap) }
+        { name: 'TOKEN_BUDGET', value: string(tokenBudget) }
+        { name: 'WALLCLOCK_BUDGET_S', value: string(wallclockBudgetSeconds) }
+        { name: 'ADO_ORG_URL', value: adoOrgUrl }
+        { name: 'ADO_PROJECT', value: adoProject }
+        { name: 'FOUNDRY_ENDPOINT', value: foundryEndpoint }
+        { name: 'TRIAGE_DEPLOYMENT', value: triageDeployment }
+        { name: 'PRIMARY_DEPLOYMENT', value: primaryDeployment }
+        { name: 'DEV_AGENT_PIPELINE_ID', value: string(devAgentPipelineId) }
+        { name: 'QA_AGENT_PIPELINE_ID', value: string(qaAgentPipelineId) }
+        { name: 'HUMAN_OWNER', value: humanOwner }
+        { name: 'LLM_PROVIDER', value: llmProvider }
+        { name: 'AGENT_IDENTITIES', value: '' }
         { name: 'KEY_VAULT_URI', value: kv.properties.vaultUri }
       ]
     }

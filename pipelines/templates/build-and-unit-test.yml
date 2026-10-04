@@ -1,13 +1,16 @@
-# Replace with your stack's build. Example: Node web app.
+# Build + unit tests for the TARGET project, driven by its adapter (.agent/project.json) — no per-project YAML edits.
+# Expects the agent kit checked out next to the target repo (see dev-agent.yml): $(Pipeline.Workspace)/s/agentkit
+parameters:
+- name: workingDirectory
+  type: string
+  default: $(Pipeline.Workspace)/s/target
 steps:
-- task: NodeTool@0
-  inputs: { versionSpec: '20.x' }
-- script: |
-    npm ci
-    npm run build
-    npm test -- --reporters=default --reporters=jest-junit
-  displayName: Build + unit tests
-- script: |
-    mkdir -p $(Build.ArtifactStagingDirectory)/app
-    cp -r dist package.json package-lock.json $(Build.ArtifactStagingDirectory)/app/ 2>/dev/null || true
-  displayName: Stage artifact
+- bash: |
+    set -euo pipefail
+    KIT="$(Pipeline.Workspace)/s/agentkit"
+    pip install -q pyyaml >/dev/null 2>&1 || true
+    eval "$(python "$KIT/scripts/adapter_cmd.py" install)"
+    eval "$(python "$KIT/scripts/adapter_cmd.py" build)"
+    eval "$(python "$KIT/scripts/adapter_cmd.py" unit_test)"
+  displayName: Install, build, unit tests (from adapter)
+  workingDirectory: ${{ parameters.workingDirectory }}

@@ -10,3 +10,4 @@ wi.json
 playwright-report/
 test-results/
 .DS_Store
+.agent-runs/

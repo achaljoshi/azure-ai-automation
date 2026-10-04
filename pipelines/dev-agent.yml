@@ -1,4 +1,5 @@
 # Development agent run. Queued by the Orchestrator Function with workItemId + iteration.
+# Lives in the TARGET repo; the agent kit (this blueprint repo) is checked out beside it as a repository resource.
 trigger: none
 pr: none
 parameters:
@@ -8,37 +9,48 @@ parameters:
   type: string
   default: '1'
 
+resources:
+  repositories:
+  - repository: agentkit
+    type: git
+    name: ai-agentkit            # <project>/<repo> of azure-ai-automation in your Azure DevOps (or use type: github)
+
 pool: { vmImage: ubuntu-latest }
 variables:
-- group: ai-agents            # FOUNDRY_ENDPOINT, PRIMARY_DEPLOYMENT, OPENAI_API_VERSION
+- group: ai-agents              # FOUNDRY_ENDPOINT, PRIMARY_DEPLOYMENT, OPENAI_API_VERSION, ORCHESTRATOR_URL, LLM_PROVIDER, (ANTHROPIC_API_KEY as a secret)
 - name: BRANCH
   value: ai/${{ parameters.workItemId }}
+- name: KIT
+  value: $(Pipeline.Workspace)/s/agentkit
+- name: TARGET
+  value: $(Pipeline.Workspace)/s/target
 
 jobs:
 - job: dev_agent
   timeoutInMinutes: 60
   steps:
   - checkout: self
+    path: s/target
     persistCredentials: true
     fetchDepth: 0
+  - checkout: agentkit
+    path: s/agentkit
   - bash: |
       git fetch origin "$(BRANCH)" 2>/dev/null && git checkout "$(BRANCH)" || git checkout -b "$(BRANCH)"
       git config user.name "AI Development Agent"
       git config user.email "dev-agent@noreply.local"
     displayName: Prepare branch
+    workingDirectory: $(TARGET)
+  - bash: pip install -q -r "$(KIT)/orchestrator/requirements.txt"
+    displayName: Install agent kit dependencies
   - task: AzureCLI@2
     displayName: Build agent context (work item + open child bugs)
     inputs:
       azureSubscription: 'sc-ai-sdlc-poc'
       scriptType: bash
       scriptLocation: inlineScript
-      inlineScript: |
-        az boards work-item show --id ${{ parameters.workItemId }} --org $(System.CollectionUri) -o json > wi.json
-        python - <<'PY'
-        import json; wi=json.load(open('wi.json'))
-        ctx={"work_item": wi.get("fields",{}), "iteration": "${{ parameters.iteration }}"}
-        json.dump(ctx, open('context.json','w'))
-        PY
+      workingDirectory: $(TARGET)
+      inlineScript: python "$(KIT)/scripts/build_context.py" --work-item ${{ parameters.workItemId }} --iteration ${{ parameters.iteration }} --role dev
   - template: templates/build-and-unit-test.yml
   - task: AzureCLI@2
     displayName: Run Development agent
@@ -46,22 +58,26 @@ jobs:
       azureSubscription: 'sc-ai-sdlc-poc'
       scriptType: bash
       scriptLocation: inlineScript
-      inlineScript: |
-        pip install -q openai azure-identity
-        python agents/runner.py --role dev --work-item ${{ parameters.workItemId }} --context context.json
+      workingDirectory: $(TARGET)
+      inlineScript: python "$(KIT)/agents/runner.py" --role dev --work-item ${{ parameters.workItemId }} --context context.json
+  - template: templates/build-and-unit-test.yml        # trusted re-check: never take the agent's word that tests pass
   - bash: |
-      rm -f wi.json context.json
+      rm -f context.json
       git add -A ':!agent-transcript.jsonl' ':!agent-result.json'
       git diff --cached --quiet && { echo "No changes"; exit 0; }
       git commit -m "AB#${{ parameters.workItemId }} AI fix (iteration ${{ parameters.iteration }})"
+      git fetch origin main
+      python "$(KIT)/scripts/check_agent_diff.py" --base origin/main      # protected paths, diff budget, skipped/deleted tests
       git push origin "$(BRANCH)"
-    displayName: Commit and push
+    displayName: Commit, enforce diff policy, push
+    workingDirectory: $(TARGET)
   - task: AzureCLI@2
     displayName: Create or update PR
     inputs:
       azureSubscription: 'sc-ai-sdlc-poc'
       scriptType: bash
       scriptLocation: inlineScript
+      workingDirectory: $(TARGET)
       inlineScript: |
         EXISTING=$(az repos pr list --source-branch "$(BRANCH)" --status active --query "[0].pullRequestId" -o tsv --org $(System.CollectionUri) --project $(System.TeamProject))
         if [ -z "$EXISTING" ]; then
@@ -73,6 +89,15 @@ jobs:
         else
           echo "PR $EXISTING updated by push"
         fi
-  - publish: agent-transcript.jsonl
+  - task: AzureCLI@2
+    displayName: Tell the Orchestrator what happened (blocked / PR opened) + token usage
+    condition: always()
+    inputs:
+      azureSubscription: 'sc-ai-sdlc-poc'
+      scriptType: bash
+      scriptLocation: inlineScript
+      workingDirectory: $(TARGET)
+      inlineScript: python "$(KIT)/scripts/post_event.py" --url "$(ORCHESTRATOR_URL)" --type ai.dev.result --work-item ${{ parameters.workItemId }} --result agent-result.json
+  - publish: $(TARGET)/agent-transcript.jsonl
     artifact: dev-transcript-it${{ parameters.iteration }}
     condition: always()

@@ -18,6 +18,15 @@ flowchart LR
     G -- Iteration cap hit --> J{{Escalate to human}}
 ```
 
+## Try it now (no Azure account needed)
+
+```bash
+pip install pytest pyyaml requests openai anthropic azure-identity azure-functions
+python -m pytest -q && python scripts/demo_local.py
+```
+
+The loop is implemented and tested end to end against an in-memory Azure DevOps and a real git worktree — see [docs/15](docs/15-implementation-status.md) for what runs, what was fixed in the blueprint, and what still needs a live tenant. To run the agents on your own repository: [docs/16](docs/16-project-adapters.md) and `python agents/local_loop.py --repo <path> --task "..."` (set `LLM_PROVIDER=anthropic` or `azure`).
+
 ## Start here
 
 | If you want to… | Read |
@@ -36,6 +45,8 @@ flowchart LR
 | Risks, limitations and FAQ | [docs/12-risks-and-faq.md](docs/12-risks-and-faq.md) |
 | Metrics and KPIs to prove value | [docs/13-metrics-and-kpis.md](docs/13-metrics-and-kpis.md) |
 | Alternative: GitHub + Copilot coding agent | [docs/14-alternative-github-copilot.md](docs/14-alternative-github-copilot.md) |
+| What is implemented and tested, and what changed from the blueprint | [docs/15-implementation-status.md](docs/15-implementation-status.md) |
+| Point the loop at your repository (project adapter) | [docs/16-project-adapters.md](docs/16-project-adapters.md) |
 
 ## Repository layout
 
@@ -45,8 +56,9 @@ azure-ai-automation/
 ├── docs/                    # All design, setup, cost and governance documents
 ├── demo/
 │   └── index.html           # Interactive simulation of the loop + cost calculator (open in a browser)
-├── agents/prompts/          # System prompts for Orchestrator, Development and QA agents
-├── orchestrator/            # Azure Function: receives Azure Boards service hooks and routes work
+├── agents/                  # runner.py (tool loop), tools.py (sandbox), policy.py (diff gate), local_loop.py (run it locally), prompts/
+├── orchestrator/            # engine.py (loop logic), llm.py (Azure OpenAI / Claude), fake_ado.py, Azure Function shell
+├── tests/, */tests/         # ~100 tests: engine scenarios, sandbox, policy, pipelines, infra, full local loop
 ├── pipelines/               # Azure Pipelines YAML: dev-agent run, CI, deploy-to-test, QA-agent run
 ├── infra/                   # Bicep starter for the supporting Azure resources
 └── scripts/                 # Helper scripts (Azure DevOps setup: tags, states, service hooks)
@@ -54,4 +66,4 @@ azure-ai-automation/
 
 ## Status
 
-R&D / proof of concept. Prices, preview features and service limits change — every cost and capability statement in `docs/` has a "verify" note and a date. Last reviewed: **October 2026**.
+Implemented and tested locally; not yet run against a live Azure DevOps tenant (see docs/15). Prices, preview features and service limits change — every cost and capability statement in `docs/` has a "verify" note and a date. Last reviewed: **October 2026**.
