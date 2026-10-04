@@ -113,6 +113,11 @@ class LocalLoop:
         out_dir.mkdir(parents=True, exist_ok=True)
         status, note = "error", ""
         try:
+            if self.adapter.install:
+                self.log(f"[{wid}] installing dependencies in the worktree …")
+                g = self.run_gate(work, "install", self.adapter.install)
+                if not g.ok:
+                    return self._finish(wid, branch, work, out_dir, "error", f"install failed: {g.output[-400:]}", push=False)
             self.log(f"[{wid}] triage …")
             if skip_triage:
                 self.engine.triage = lambda wi, bugs: {"ready": True, "route": "dev", "risk": "low", "comment": "triage skipped"}

@@ -38,3 +38,7 @@ The loop is generic. Everything project-specific lives in one file in the **targ
 ## Example: the ATS dashboard (`html-reporting`)
 
 A no-server HTML dashboard (plain browser JavaScript, Excel in, PDF/PowerPoint out). Its adapter uses Node's built-in test runner for unit tests and Playwright (headless Chromium, the app's own `tools/qa_harness.js` sweep) for end-to-end tests. Templates, sample data, bundled libraries and the PowerPoint theme are protected because they carry client branding and fictional data that humans curate.
+
+### Verified run (scripted agents, real project)
+
+Against a copy of the dashboard with a deliberately re-introduced bug (month-first dates such as `9/25/2026` rejected), `local_loop.py` produced: iteration 1 — the dev agent's attempts to edit a bundled library, `package.json` and to run `npm install` were all **denied** by the sandbox, it claimed success without fixing anything, and the trusted gates failed (1 unit test, e2e spec) → two child bugs; iteration 2 — the real fix in `assets/js/core.js`, gates green, QA verdict pass, status `ready_for_signoff`. The branch held exactly two changed files (the fix and the QA agent's Playwright spec). The scripted agents stand in for a real model; with `LLM_PROVIDER` set, the same loop runs with Claude or Azure OpenAI.
