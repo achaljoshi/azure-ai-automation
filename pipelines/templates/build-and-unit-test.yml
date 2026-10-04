@@ -1,0 +1,13 @@
+# Replace with your stack's build. Example: Node web app.
+steps:
+- task: NodeTool@0
+  inputs: { versionSpec: '20.x' }
+- script: |
+    npm ci
+    npm run build
+    npm test -- --reporters=default --reporters=jest-junit
+  displayName: Build + unit tests
+- script: |
+    mkdir -p $(Build.ArtifactStagingDirectory)/app
+    cp -r dist package.json package-lock.json $(Build.ArtifactStagingDirectory)/app/ 2>/dev/null || true
+  displayName: Stage artifact

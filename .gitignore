@@ -1,0 +1,12 @@
+local.settings.json
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+agent-transcript.jsonl
+agent-result.json
+context.json
+wi.json
+playwright-report/
+test-results/
+.DS_Store

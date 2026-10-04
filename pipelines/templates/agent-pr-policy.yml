@@ -1,0 +1,17 @@
+# Extra checks when the PR source branch is ai/* (created by the Development agent).
+steps:
+- bash: |
+    set -euo pipefail
+    BASE=origin/$(echo "$(System.PullRequest.TargetBranch)" | sed 's#refs/heads/##')
+    CHANGED=$(git diff --name-only "$BASE"...HEAD)
+    echo "$CHANGED"
+    if echo "$CHANGED" | grep -E '^(pipelines/|infra/|\.azuredevops/|qa-thresholds\.json|tests/quarantine\.txt)'; then
+      echo "##vso[task.logissue type=error]Agent PR touches a protected path"; exit 1; fi
+    FILES=$(echo "$CHANGED" | grep -c . || true)
+    LINES=$(git diff --numstat "$BASE"...HEAD | awk '{s+=$1+$2} END {print s+0}')
+    if [ "$FILES" -gt 15 ] || [ "$LINES" -gt 600 ]; then
+      echo "##vso[task.logissue type=error]Agent PR exceeds diff budget ($FILES files, $LINES lines)"; exit 1; fi
+    if git diff "$BASE"...HEAD | grep -E '^\+.*(\.skip\(|@Disabled|@pytest\.mark\.skip|\[Ignore\])'; then
+      echo "##vso[task.logissue type=error]Agent PR skips tests"; exit 1; fi
+  displayName: Agent PR policy (ai/* branches)
+  condition: and(eq(variables['Build.Reason'], 'PullRequest'), startsWith(variables['System.PullRequest.SourceBranch'], 'refs/heads/ai/'))

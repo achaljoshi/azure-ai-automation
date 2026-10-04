@@ -1,0 +1,67 @@
+# QA agent run against the test environment. Queued by deploy-test.yml per linked work item.
+trigger: none
+pr: none
+parameters:
+- name: workItemId
+  type: string
+
+pool: { vmImage: ubuntu-latest }
+variables:
+- group: ai-agents            # FOUNDRY_ENDPOINT, PRIMARY_DEPLOYMENT, ORCHESTRATOR_URL, TEST_BASE_URL
+
+jobs:
+- job: qa_agent
+  timeoutInMinutes: 90
+  steps:
+  - checkout: self
+  - task: NodeTool@0
+    inputs: { versionSpec: '20.x' }
+  - script: |
+      npm ci
+      npx playwright install --with-deps chromium
+    displayName: Install test tooling
+  - task: AzureCLI@2
+    displayName: Build QA context
+    inputs:
+      azureSubscription: 'sc-ai-sdlc-poc'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        az boards work-item show --id ${{ parameters.workItemId }} --org $(System.CollectionUri) -o json > wi.json
+        python -c "import json;w=json.load(open('wi.json'));json.dump({'work_item':w.get('fields',{}),'test_base_url':'$(TEST_BASE_URL)','thresholds':json.load(open('qa-thresholds.json')) if __import__('os').path.exists('qa-thresholds.json') else {}},open('context.json','w'))"
+  - task: AzureCLI@2
+    displayName: Run QA agent (design + generate + run tests)
+    inputs:
+      azureSubscription: 'sc-ai-sdlc-poc'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        pip install -q openai azure-identity
+        export AGENT_ALLOWED_CMDS="npx playwright,npm test,npm run"
+        python agents/runner.py --role qa --work-item ${{ parameters.workItemId }} --context context.json
+  - script: npx playwright test --reporter=junit,html
+    displayName: Regression + generated tests
+    env: { BASE_URL: $(TEST_BASE_URL), PLAYWRIGHT_JUNIT_OUTPUT_NAME: junit-qa.xml }
+    continueOnError: true
+  - script: |
+      docker run --rm -v $(pwd):/zap/wrk -t ghcr.io/zaproxy/zaproxy:stable \
+        zap-baseline.py -t $(TEST_BASE_URL) -J zap.json -r zap.html || true
+    displayName: Security baseline (OWASP ZAP)
+  - task: AzureCLI@2
+    displayName: File bugs + post verdict to Orchestrator
+    inputs:
+      azureSubscription: 'sc-ai-sdlc-poc'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        python scripts/post_qa_results.py --work-item ${{ parameters.workItemId }} \
+          --result agent-result.json --orchestrator "$(ORCHESTRATOR_URL)"
+  - task: PublishTestResults@2
+    condition: always()
+    inputs: { testResultsFormat: JUnit, testResultsFiles: '**/junit*.xml' }
+  - publish: playwright-report
+    artifact: playwright-report-$(System.JobAttempt)
+    condition: always()
+  - publish: agent-transcript.jsonl
+    artifact: qa-transcript-$(System.JobAttempt)
+    condition: always()

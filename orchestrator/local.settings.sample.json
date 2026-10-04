@@ -1,0 +1,15 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "ADO_ORG_URL": "https://dev.azure.com/<org>",
+    "ADO_PROJECT": "<project>",
+    "DEV_AGENT_PIPELINE_ID": "0",
+    "QA_AGENT_PIPELINE_ID": "0",
+    "ITERATION_CAP": "3",
+    "FOUNDRY_ENDPOINT": "https://<resource>.openai.azure.com/",
+    "TRIAGE_DEPLOYMENT": "<small-model-deployment>",
+    "OPENAI_API_VERSION": "2024-10-21"
+  }
+}

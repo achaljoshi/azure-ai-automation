@@ -1,0 +1,40 @@
+# Deploys the latest main build to the test environment, then queues the QA agent for linked work items.
+trigger: none
+resources:
+  pipelines:
+  - pipeline: ci
+    source: ci            # name of the CI pipeline in ADO
+    trigger: { branches: { include: [ main ] } }
+
+pool: { vmImage: ubuntu-latest }
+
+stages:
+- stage: deploy_test
+  jobs:
+  - deployment: deploy
+    environment: test
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: ci
+            artifact: drop
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: 'sc-ai-sdlc-poc'      # service connection (workload identity federation)
+              appName: '$(TEST_WEBAPP_NAME)'
+              package: '$(Pipeline.Workspace)/ci/drop/app'
+          - task: AzureCLI@2
+            displayName: Queue QA agent for work items in this build
+            inputs:
+              azureSubscription: 'sc-ai-sdlc-poc'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                ITEMS=$(az devops invoke --area build --resource workitems \
+                  --route-parameters project=$(System.TeamProject) buildId=$(resources.pipeline.ci.runID) \
+                  --org $(System.CollectionUri) --query "value[].id" -o tsv)
+                for ID in $ITEMS; do
+                  az pipelines run --id $(QA_AGENT_PIPELINE_ID) --parameters workItemId=$ID \
+                    --org $(System.CollectionUri) --project $(System.TeamProject)
+                done

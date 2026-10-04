@@ -1,0 +1,78 @@
+# Development agent run. Queued by the Orchestrator Function with workItemId + iteration.
+trigger: none
+pr: none
+parameters:
+- name: workItemId
+  type: string
+- name: iteration
+  type: string
+  default: '1'
+
+pool: { vmImage: ubuntu-latest }
+variables:
+- group: ai-agents            # FOUNDRY_ENDPOINT, PRIMARY_DEPLOYMENT, OPENAI_API_VERSION
+- name: BRANCH
+  value: ai/${{ parameters.workItemId }}
+
+jobs:
+- job: dev_agent
+  timeoutInMinutes: 60
+  steps:
+  - checkout: self
+    persistCredentials: true
+    fetchDepth: 0
+  - bash: |
+      git fetch origin "$(BRANCH)" 2>/dev/null && git checkout "$(BRANCH)" || git checkout -b "$(BRANCH)"
+      git config user.name "AI Development Agent"
+      git config user.email "dev-agent@noreply.local"
+    displayName: Prepare branch
+  - task: AzureCLI@2
+    displayName: Build agent context (work item + open child bugs)
+    inputs:
+      azureSubscription: 'sc-ai-sdlc-poc'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        az boards work-item show --id ${{ parameters.workItemId }} --org $(System.CollectionUri) -o json > wi.json
+        python - <<'PY'
+        import json; wi=json.load(open('wi.json'))
+        ctx={"work_item": wi.get("fields",{}), "iteration": "${{ parameters.iteration }}"}
+        json.dump(ctx, open('context.json','w'))
+        PY
+  - template: templates/build-and-unit-test.yml
+  - task: AzureCLI@2
+    displayName: Run Development agent
+    inputs:
+      azureSubscription: 'sc-ai-sdlc-poc'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        pip install -q openai azure-identity
+        python agents/runner.py --role dev --work-item ${{ parameters.workItemId }} --context context.json
+  - bash: |
+      rm -f wi.json context.json
+      git add -A ':!agent-transcript.jsonl' ':!agent-result.json'
+      git diff --cached --quiet && { echo "No changes"; exit 0; }
+      git commit -m "AB#${{ parameters.workItemId }} AI fix (iteration ${{ parameters.iteration }})"
+      git push origin "$(BRANCH)"
+    displayName: Commit and push
+  - task: AzureCLI@2
+    displayName: Create or update PR
+    inputs:
+      azureSubscription: 'sc-ai-sdlc-poc'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        EXISTING=$(az repos pr list --source-branch "$(BRANCH)" --status active --query "[0].pullRequestId" -o tsv --org $(System.CollectionUri) --project $(System.TeamProject))
+        if [ -z "$EXISTING" ]; then
+          az repos pr create --source-branch "$(BRANCH)" --target-branch main \
+            --title "[AI] AB#${{ parameters.workItemId }}" \
+            --description "$(python -c 'import json;print(json.load(open("agent-result.json")).get("summary",""))' 2>/dev/null)" \
+            --work-items ${{ parameters.workItemId }} --draft false \
+            --org $(System.CollectionUri) --project $(System.TeamProject)
+        else
+          echo "PR $EXISTING updated by push"
+        fi
+  - publish: agent-transcript.jsonl
+    artifact: dev-transcript-it${{ parameters.iteration }}
+    condition: always()
