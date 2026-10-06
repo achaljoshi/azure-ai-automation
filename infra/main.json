@@ -1,0 +1,338 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.47.16.16243",
+      "templateHash": "13028916958156612617"
+    }
+  },
+  "parameters": {
+    "prefix": {
+      "type": "string",
+      "defaultValue": "aisdlc",
+      "metadata": {
+        "description": "Short prefix for resource names"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "adoOrgUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure DevOps organisation URL, e.g. https://dev.azure.com/contoso"
+      }
+    },
+    "adoProject": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "foundryEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure OpenAI / Foundry endpoint used by the triage model (and the agents, when LLM_PROVIDER=azure)"
+      }
+    },
+    "triageDeployment": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "primaryDeployment": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "devAgentPipelineId": {
+      "type": "int",
+      "defaultValue": 0,
+      "metadata": {
+        "description": "Pipeline id of dev-agent.yml (set after you create the pipeline)"
+      }
+    },
+    "qaAgentPipelineId": {
+      "type": "int",
+      "defaultValue": 0
+    },
+    "humanOwner": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Who gets assigned when the loop escalates (user principal name)"
+      }
+    },
+    "llmProvider": {
+      "type": "string",
+      "defaultValue": "azure",
+      "metadata": {
+        "description": "azure | anthropic"
+      }
+    },
+    "iterationCap": {
+      "type": "int",
+      "defaultValue": 3
+    },
+    "tokenBudget": {
+      "type": "int",
+      "defaultValue": 2000000
+    },
+    "wallclockBudgetSeconds": {
+      "type": "int",
+      "defaultValue": 14400
+    }
+  },
+  "variables": {
+    "suffix": "[uniqueString(resourceGroup().id)]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "[format('{0}-law-{1}', parameters('prefix'), variables('suffix'))]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[format('{0}-appi-{1}', parameters('prefix'), variables('suffix'))]",
+      "location": "[parameters('location')]",
+      "kind": "web",
+      "properties": {
+        "Application_Type": "web",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-law-{1}', parameters('prefix'), variables('suffix')))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-law-{1}', parameters('prefix'), variables('suffix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[toLower(take(format('{0}st{1}', parameters('prefix'), variables('suffix')), 24))]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-07-01",
+      "name": "[take(format('{0}-kv-{1}', parameters('prefix'), variables('suffix')), 24)]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "tenantId": "[subscription().tenantId]",
+        "sku": {
+          "family": "A",
+          "name": "standard"
+        },
+        "enableRbacAuthorization": true,
+        "enableSoftDelete": true
+      }
+    },
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[format('{0}-id-orchestrator', parameters('prefix'))]",
+      "location": "[parameters('location')]"
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}-func-plan', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Y1",
+        "tier": "Dynamic"
+      },
+      "kind": "functionapp",
+      "properties": {
+        "reserved": true
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}-orchestrator-{1}', parameters('prefix'), variables('suffix'))]",
+      "location": "[parameters('location')]",
+      "kind": "functionapp,linux",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-id-orchestrator', parameters('prefix'))))]": {}
+        }
+      },
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', format('{0}-func-plan', parameters('prefix')))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "linuxFxVersion": "PYTHON|3.11",
+          "appSettings": [
+            {
+              "name": "FUNCTIONS_EXTENSION_VERSION",
+              "value": "~4"
+            },
+            {
+              "name": "FUNCTIONS_WORKER_RUNTIME",
+              "value": "python"
+            },
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix={2}', toLower(take(format('{0}st{1}', parameters('prefix'), variables('suffix')), 24)), listKeys(resourceId('Microsoft.Storage/storageAccounts', toLower(take(format('{0}st{1}', parameters('prefix'), variables('suffix')), 24))), '2023-01-01').keys[0].value, environment().suffixes.storage)]"
+            },
+            {
+              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+              "value": "[reference(resourceId('Microsoft.Insights/components', format('{0}-appi-{1}', parameters('prefix'), variables('suffix'))), '2020-02-02').ConnectionString]"
+            },
+            {
+              "name": "AZURE_CLIENT_ID",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-id-orchestrator', parameters('prefix'))), '2023-01-31').clientId]"
+            },
+            {
+              "name": "ITERATION_CAP",
+              "value": "[string(parameters('iterationCap'))]"
+            },
+            {
+              "name": "TOKEN_BUDGET",
+              "value": "[string(parameters('tokenBudget'))]"
+            },
+            {
+              "name": "WALLCLOCK_BUDGET_S",
+              "value": "[string(parameters('wallclockBudgetSeconds'))]"
+            },
+            {
+              "name": "ADO_ORG_URL",
+              "value": "[parameters('adoOrgUrl')]"
+            },
+            {
+              "name": "ADO_PROJECT",
+              "value": "[parameters('adoProject')]"
+            },
+            {
+              "name": "FOUNDRY_ENDPOINT",
+              "value": "[parameters('foundryEndpoint')]"
+            },
+            {
+              "name": "TRIAGE_DEPLOYMENT",
+              "value": "[parameters('triageDeployment')]"
+            },
+            {
+              "name": "PRIMARY_DEPLOYMENT",
+              "value": "[parameters('primaryDeployment')]"
+            },
+            {
+              "name": "DEV_AGENT_PIPELINE_ID",
+              "value": "[string(parameters('devAgentPipelineId'))]"
+            },
+            {
+              "name": "QA_AGENT_PIPELINE_ID",
+              "value": "[string(parameters('qaAgentPipelineId'))]"
+            },
+            {
+              "name": "HUMAN_OWNER",
+              "value": "[parameters('humanOwner')]"
+            },
+            {
+              "name": "LLM_PROVIDER",
+              "value": "[parameters('llmProvider')]"
+            },
+            {
+              "name": "AGENT_IDENTITIES",
+              "value": ""
+            },
+            {
+              "name": "KEY_VAULT_URI",
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', take(format('{0}-kv-{1}', parameters('prefix'), variables('suffix')), 24)), '2023-07-01').vaultUri]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/components', format('{0}-appi-{1}', parameters('prefix'), variables('suffix')))]",
+        "[resourceId('Microsoft.Web/serverfarms', format('{0}-func-plan', parameters('prefix')))]",
+        "[resourceId('Microsoft.KeyVault/vaults', take(format('{0}-kv-{1}', parameters('prefix'), variables('suffix')), 24))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-id-orchestrator', parameters('prefix')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', toLower(take(format('{0}st{1}', parameters('prefix'), variables('suffix')), 24)))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}-test-plan', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "B1",
+        "tier": "Basic"
+      },
+      "kind": "linux",
+      "properties": {
+        "reserved": true
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}-test-{1}', parameters('prefix'), variables('suffix'))]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', format('{0}-test-plan', parameters('prefix')))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "linuxFxVersion": "NODE|20-lts",
+          "appSettings": [
+            {
+              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+              "value": "[reference(resourceId('Microsoft.Insights/components', format('{0}-appi-{1}', parameters('prefix'), variables('suffix'))), '2020-02-02').ConnectionString]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/components', format('{0}-appi-{1}', parameters('prefix'), variables('suffix')))]",
+        "[resourceId('Microsoft.Web/serverfarms', format('{0}-test-plan', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.LoadTestService/loadTests",
+      "apiVersion": "2022-12-01",
+      "name": "[format('{0}-lt-{1}', parameters('prefix'), variables('suffix'))]",
+      "location": "[parameters('location')]",
+      "properties": {}
+    }
+  ],
+  "outputs": {
+    "functionAppName": {
+      "type": "string",
+      "value": "[format('{0}-orchestrator-{1}', parameters('prefix'), variables('suffix'))]"
+    },
+    "testWebAppName": {
+      "type": "string",
+      "value": "[format('{0}-test-{1}', parameters('prefix'), variables('suffix'))]"
+    },
+    "testBaseUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', format('{0}-test-{1}', parameters('prefix'), variables('suffix'))), '2023-01-01').defaultHostName)]"
+    },
+    "orchestratorPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-id-orchestrator', parameters('prefix'))), '2023-01-31').principalId]"
+    },
+    "keyVaultName": {
+      "type": "string",
+      "value": "[take(format('{0}-kv-{1}', parameters('prefix'), variables('suffix')), 24)]"
+    }
+  }
+}

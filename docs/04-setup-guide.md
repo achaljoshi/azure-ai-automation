@@ -15,6 +15,12 @@ az devops configure --defaults organization=$ADO_ORG project=$ADO_PROJECT
 
 ## Step 1 — Deploy supporting Azure resources
 
+**Portal route (no CLI):** create the resource group, then deploy the template with this link — it opens the portal's custom-deployment form with every parameter:
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fachaljoshi%2Fazure-ai-automation%2Ffeature%2Fworking-implementation%2Finfra%2Fmain.json)
+
+(`infra/main.json` is the compiled form of `main.bicep`; a test keeps them in sync.) **CLI route:**
+
 ```bash
 az group create -n $RG -l $LOCATION
 az deployment group create -g $RG -f infra/main.bicep -p prefix=aisdlc
