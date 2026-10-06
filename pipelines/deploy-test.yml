@@ -26,6 +26,7 @@ stages:
               azureSubscription: 'sc-ai-sdlc-poc'      # service connection (workload identity federation)
               appName: '$(TEST_WEBAPP_NAME)'
               package: '$(Pipeline.Workspace)/ci/drop/app'
+              startUpCommand: '$(TEST_START_COMMAND)'      # e.g. node tools/serve.js for a static app; empty for stacks with a default start
           - task: AzureCLI@2
             displayName: Queue QA agent for work items in this build
             inputs:

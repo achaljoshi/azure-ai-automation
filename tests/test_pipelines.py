@@ -63,3 +63,10 @@ def test_every_parameter_used_is_declared():
         declared = {p["name"] for p in doc["parameters"]}
         used = set(re.findall(r"parameters\.(\w+)", (ROOT / "pipelines" / f).read_text()))
         assert used <= declared, f"{f}: undeclared {used - declared}"
+
+
+def test_ci_uses_kit_layout_and_stages_an_artifact():
+    ci = yaml.safe_load((ROOT / "pipelines" / "ci.yml").read_text())
+    assert ci["resources"]["repositories"][0]["repository"] == "agentkit"
+    text = (ROOT / "pipelines" / "ci.yml").read_text()
+    assert "path: s/target" in text and "path: s/agentkit" in text and "git archive" in text

@@ -1,5 +1,7 @@
 # 04 — Setup guide (step by step)
 
+> New to Azure? Use the portal walkthrough instead: [17 — Azure setup from scratch](17-azure-portal-setup-from-scratch.md).
+
 Commands assume Bash with Azure CLI logged in (`az login`). Replace values in `<>`.
 
 ## Step 0 — Variables

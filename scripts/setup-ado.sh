@@ -15,7 +15,7 @@ az pipelines variable-group create --name ai-agents --authorize true --variables
   FOUNDRY_ENDPOINT="https://<resource>.openai.azure.com/" \
   PRIMARY_DEPLOYMENT="<primary-model>" OPENAI_API_VERSION="2024-10-21" \
   TEST_BASE_URL="https://<test-webapp>.azurewebsites.net" \
-  LLM_PROVIDER="azure" ORCHESTRATOR_URL="$FUNC_URL" QA_AGENT_PIPELINE_ID="0" TEST_WEBAPP_NAME="<test-webapp>" || true
+  LLM_PROVIDER="azure" ORCHESTRATOR_URL="$FUNC_URL" QA_AGENT_PIPELINE_ID="0" TEST_WEBAPP_NAME="<test-webapp>" TEST_START_COMMAND="" || true
 
 cat <<MSG
 

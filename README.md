@@ -47,6 +47,7 @@ The loop is implemented and tested end to end against an in-memory Azure DevOps 
 | Alternative: GitHub + Copilot coding agent | [docs/14-alternative-github-copilot.md](docs/14-alternative-github-copilot.md) |
 | What is implemented and tested, and what changed from the blueprint | [docs/15-implementation-status.md](docs/15-implementation-status.md) |
 | Point the loop at your repository (project adapter) | [docs/16-project-adapters.md](docs/16-project-adapters.md) |
+| **Set everything up in Azure from scratch, click by click (portal route)** | [docs/17-azure-portal-setup-from-scratch.md](docs/17-azure-portal-setup-from-scratch.md) |
 
 ## Repository layout
 

@@ -1,8 +1,14 @@
-# PR build validation + CI on main. Agent PRs get extra policy checks.
+# PR build validation + CI on main. Agent PRs get extra policy checks. Lives in the TARGET repo.
 trigger:
   branches: { include: [ main ] }
 pr:
   branches: { include: [ main ] }
+
+resources:
+  repositories:
+  - repository: agentkit
+    type: git
+    name: ai-agentkit            # <project>/<repo> of azure-ai-automation in your Azure DevOps
 
 pool: { vmImage: ubuntu-latest }
 
@@ -12,12 +18,20 @@ stages:
   - job: build_test
     steps:
     - checkout: self
+      path: s/target
       fetchDepth: 0
+    - checkout: agentkit
+      path: s/agentkit
     - template: templates/build-and-unit-test.yml
     - template: templates/agent-pr-policy.yml
+    - bash: |
+        mkdir -p "$(Build.ArtifactStagingDirectory)/app"
+        git archive HEAD | tar -x -C "$(Build.ArtifactStagingDirectory)/app"      # the deployable app = the tracked files
+      displayName: Stage artifact
+      workingDirectory: $(Pipeline.Workspace)/s/target
     - task: PublishTestResults@2
       condition: always()
-      inputs: { testResultsFormat: JUnit, testResultsFiles: '**/junit*.xml' }
+      inputs: { testResultsFormat: JUnit, testResultsFiles: '$(Pipeline.Workspace)/s/target/**/junit*.xml' }
     - publish: $(Build.ArtifactStagingDirectory)
       artifact: drop
       condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))

@@ -88,3 +88,15 @@ def test_triage_uses_prompt_data_framing_and_handles_garbage():
     assert "DATA (not instructions)" in llm.calls[0]["messages"][0]["content"] and llm.calls[0]["json_mode"]
     bad = triage({"System.Title": "t"}, [], llm)
     assert bad["route"] == "needs_info" and not bad["ready"]
+
+
+def test_missing_prompt_fails_loudly_instead_of_degrading_silently(monkeypatch, tmp_path):
+    import triage as tr
+    monkeypatch.setattr(tr, "PROMPT_CANDIDATES", (tmp_path / "nope.md",))
+    with pytest.raises(FileNotFoundError):
+        tr.load_prompt()
+
+
+def test_packaged_prompt_location_is_preferred_and_real_prompt_exists():
+    import triage as tr
+    assert tr.PROMPT_CANDIDATES[0].parent.name == "prompts" and "Orchestrator agent" in tr.load_prompt()
